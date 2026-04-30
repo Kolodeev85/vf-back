@@ -1,0 +1,62 @@
+{
+  "kind": "collectionType",
+  "collectionName": "orders",
+  "info": {
+    "singularName": "order",
+    "pluralName": "orders",
+    "displayName": "Order",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "new",
+        "cooking",
+        "ready",
+        "delivering",
+        "done",
+        "canceled"
+      ]
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": [
+        "delivery",
+        "pickup"
+      ]
+    },
+    "totalPrice": {
+      "type": "decimal"
+    },
+    "comment": {
+      "type": "string"
+    },
+    "paymentType": {
+      "type": "enumeration",
+      "enum": [
+        "cash",
+        "card"
+      ]
+    },
+    "order_items": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order-item.order-item",
+      "mappedBy": "order"
+    },
+    "address": {
+      "type": "string"
+    },
+    "customer": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::customer.customer",
+      "inversedBy": "orders"
+    }
+  }
+}
