@@ -4,7 +4,8 @@
   "info": {
     "singularName": "dish",
     "pluralName": "dishes",
-    "displayName": "Dish"
+    "displayName": "Dish",
+    "description": ""
   },
   "options": {
     "draftAndPublish": true
@@ -29,15 +30,16 @@
       "type": "integer"
     },
     "image": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
       "allowedTypes": [
         "images"
-      ],
-      "type": "media",
-      "multiple": false
+      ]
     },
-    "order_item": {
+    "order_items": {
       "type": "relation",
-      "relation": "oneToOne",
+      "relation": "oneToMany",
       "target": "api::order-item.order-item",
       "mappedBy": "dish"
     },

@@ -24,12 +24,6 @@
     "price": {
       "type": "decimal"
     },
-    "dish": {
-      "type": "relation",
-      "relation": "oneToOne",
-      "target": "api::dish.dish",
-      "inversedBy": "order_item"
-    },
     "status": {
       "type": "enumeration",
       "enum": [
@@ -38,6 +32,12 @@
         "ready"
       ],
       "default": "pending"
+    },
+    "dish": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::dish.dish",
+      "inversedBy": "order_items"
     }
   }
 }

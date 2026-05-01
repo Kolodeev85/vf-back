@@ -57,6 +57,12 @@
       "relation": "manyToOne",
       "target": "api::customer.customer",
       "inversedBy": "orders"
+    },
+    "branch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::branch.branch",
+      "inversedBy": "orders"
     }
   }
 }

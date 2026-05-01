@@ -10,12 +10,16 @@ const { createCoreController } = require("@strapi/strapi").factories;
 module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   async createFullOrder(ctx) {
     try {
-      const { customer, type, address, paymentType, comment, items } =
+      const { branchId, customer, type, address, paymentType, comment, items } =
         ctx.request.body;
 
       // 1. проверка клиента
       if (!customer || !customer.phone) {
         return ctx.badRequest("Customer phone is required");
+      }
+      // проверка филиала
+      if (!branchId) {
+        return ctx.badRequest("branchId is required");
       }
 
       // 2. ищем клиента по телефону
@@ -92,6 +96,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           paymentType,
           comment,
           customer: customerEntity.id,
+          branch: branchId,
         },
       });
 
@@ -135,11 +140,17 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     try {
       const activeStatuses = ["new", "cooking"];
 
+      const { branchId } = ctx.query;
+      if (!branchId) {
+        return ctx.badRequest("branchId is required");
+      }
+
       const orders = await strapi.entityService.findMany("api::order.order", {
         filters: {
           status: {
             $in: activeStatuses,
           },
+          branch: branchId,
         },
         populate: {
           order_items: {
@@ -202,13 +213,26 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
             Number(recipe.quantity || 0) * Number(dish.quantity || 0);
 
           if (!ingredientsMap[ingredientId]) {
+            const branchIngredients = await strapi.entityService.findMany(
+              "api::branch-ingredient.branch-ingredient",
+              {
+                filters: {
+                  branch: branchId,
+                  ingredient: ingredient.id,
+                },
+                limit: 1,
+              }
+            );
+
+            const branchIngredient = branchIngredients[0];
+
             ingredientsMap[ingredientId] = {
               ingredientId,
               name: ingredient.name,
               unit: ingredient.unit,
               needed: 0,
-              stock: Number(ingredient.stock || 0),
-              minStock: Number(ingredient.minStock || 0),
+              stock: Number(branchIngredient?.stock || 0),
+              minStock: Number(branchIngredient?.minStock || 0),
             };
           }
 

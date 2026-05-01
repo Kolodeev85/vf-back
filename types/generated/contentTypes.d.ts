@@ -587,7 +587,6 @@ export interface PluginUsersPermissionsUser extends Schema.CollectionType {
   };
   options: {
     draftAndPublish: false;
-    timestamps: true;
   };
   attributes: {
     username: Attribute.String &
@@ -616,6 +615,12 @@ export interface PluginUsersPermissionsUser extends Schema.CollectionType {
       'manyToOne',
       'plugin::users-permissions.role'
     >;
+    branch: Attribute.Relation<
+      'plugin::users-permissions.user',
+      'manyToOne',
+      'api::branch.branch'
+    >;
+    roles: Attribute.Enumeration<['admin', 'kitchen', 'courier', 'manager']>;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
@@ -677,6 +682,97 @@ export interface PluginI18NLocale extends Schema.CollectionType {
   };
 }
 
+export interface ApiBranchBranch extends Schema.CollectionType {
+  collectionName: 'branches';
+  info: {
+    singularName: 'branch';
+    pluralName: 'branches';
+    displayName: 'Branch';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    name: Attribute.String;
+    city: Attribute.String;
+    address: Attribute.String;
+    phone: Attribute.String;
+    isActive: Attribute.Boolean;
+    orders: Attribute.Relation<
+      'api::branch.branch',
+      'oneToMany',
+      'api::order.order'
+    >;
+    users: Attribute.Relation<
+      'api::branch.branch',
+      'oneToMany',
+      'plugin::users-permissions.user'
+    >;
+    branch_ingredients: Attribute.Relation<
+      'api::branch.branch',
+      'oneToMany',
+      'api::branch-ingredient.branch-ingredient'
+    >;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    publishedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::branch.branch',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::branch.branch',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
+export interface ApiBranchIngredientBranchIngredient
+  extends Schema.CollectionType {
+  collectionName: 'branch_ingredients';
+  info: {
+    singularName: 'branch-ingredient';
+    pluralName: 'branch-ingredients';
+    displayName: 'Branch Ingredient';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    stock: Attribute.Decimal;
+    miniStock: Attribute.Decimal;
+    branch: Attribute.Relation<
+      'api::branch-ingredient.branch-ingredient',
+      'manyToOne',
+      'api::branch.branch'
+    >;
+    ingredient: Attribute.Relation<
+      'api::branch-ingredient.branch-ingredient',
+      'manyToOne',
+      'api::ingredient.ingredient'
+    >;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    publishedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::branch-ingredient.branch-ingredient',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::branch-ingredient.branch-ingredient',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
 export interface ApiCustomerCustomer extends Schema.CollectionType {
   collectionName: 'customers';
   info: {
@@ -721,6 +817,7 @@ export interface ApiDishDish extends Schema.CollectionType {
     singularName: 'dish';
     pluralName: 'dishes';
     displayName: 'Dish';
+    description: '';
   };
   options: {
     draftAndPublish: true;
@@ -731,9 +828,9 @@ export interface ApiDishDish extends Schema.CollectionType {
     category: Attribute.Enumeration<['rolls', 'sets', 'drinks']>;
     cookingTime: Attribute.Integer;
     image: Attribute.Media;
-    order_item: Attribute.Relation<
+    order_items: Attribute.Relation<
       'api::dish.dish',
-      'oneToOne',
+      'oneToMany',
       'api::order-item.order-item'
     >;
     recipes: Attribute.Relation<
@@ -765,9 +862,12 @@ export interface ApiIngredientIngredient extends Schema.CollectionType {
   attributes: {
     name: Attribute.String;
     unit: Attribute.Enumeration<['kg', 'g', 'pcs', 'ml']>;
-    stock: Attribute.Decimal;
-    minStock: Attribute.Decimal;
     foto: Attribute.Media;
+    branch_ingredients: Attribute.Relation<
+      'api::ingredient.ingredient',
+      'oneToMany',
+      'api::branch-ingredient.branch-ingredient'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     publishedAt: Attribute.DateTime;
@@ -816,6 +916,11 @@ export interface ApiOrderOrder extends Schema.CollectionType {
       'manyToOne',
       'api::customer.customer'
     >;
+    branch: Attribute.Relation<
+      'api::order.order',
+      'manyToOne',
+      'api::branch.branch'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
@@ -852,13 +957,13 @@ export interface ApiOrderItemOrderItem extends Schema.CollectionType {
     >;
     quantity: Attribute.Integer;
     price: Attribute.Decimal;
-    dish: Attribute.Relation<
-      'api::order-item.order-item',
-      'oneToOne',
-      'api::dish.dish'
-    >;
     status: Attribute.Enumeration<['pending', 'cooking', 'ready']> &
       Attribute.DefaultTo<'pending'>;
+    dish: Attribute.Relation<
+      'api::order-item.order-item',
+      'manyToOne',
+      'api::dish.dish'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
@@ -933,6 +1038,8 @@ declare module '@strapi/types' {
       'plugin::users-permissions.role': PluginUsersPermissionsRole;
       'plugin::users-permissions.user': PluginUsersPermissionsUser;
       'plugin::i18n.locale': PluginI18NLocale;
+      'api::branch.branch': ApiBranchBranch;
+      'api::branch-ingredient.branch-ingredient': ApiBranchIngredientBranchIngredient;
       'api::customer.customer': ApiCustomerCustomer;
       'api::dish.dish': ApiDishDish;
       'api::ingredient.ingredient': ApiIngredientIngredient;

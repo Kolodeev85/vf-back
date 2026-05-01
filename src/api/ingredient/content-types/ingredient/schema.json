@@ -24,12 +24,6 @@
         "ml"
       ]
     },
-    "stock": {
-      "type": "decimal"
-    },
-    "minStock": {
-      "type": "decimal"
-    },
     "foto": {
       "type": "media",
       "multiple": false,
@@ -37,6 +31,12 @@
       "allowedTypes": [
         "images"
       ]
+    },
+    "branch_ingredients": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::branch-ingredient.branch-ingredient",
+      "mappedBy": "ingredient"
     }
   }
 }

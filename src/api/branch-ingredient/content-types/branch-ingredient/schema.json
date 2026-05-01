@@ -1,0 +1,33 @@
+{
+  "kind": "collectionType",
+  "collectionName": "branch_ingredients",
+  "info": {
+    "singularName": "branch-ingredient",
+    "pluralName": "branch-ingredients",
+    "displayName": "Branch Ingredient"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "stock": {
+      "type": "decimal"
+    },
+    "miniStock": {
+      "type": "decimal"
+    },
+    "branch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::branch.branch",
+      "inversedBy": "branch_ingredients"
+    },
+    "ingredient": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::ingredient.ingredient",
+      "inversedBy": "branch_ingredients"
+    }
+  }
+}
