@@ -827,7 +827,7 @@ export interface ApiDishDish extends Schema.CollectionType {
     price: Attribute.Decimal;
     category: Attribute.Enumeration<['rolls', 'sets', 'drinks']>;
     cookingTime: Attribute.Integer;
-    image: Attribute.Media;
+    foto: Attribute.Media;
     order_items: Attribute.Relation<
       'api::dish.dish',
       'oneToMany',
@@ -861,7 +861,7 @@ export interface ApiIngredientIngredient extends Schema.CollectionType {
   };
   attributes: {
     name: Attribute.String;
-    unit: Attribute.Enumeration<['kg', 'g', 'pcs', 'ml']>;
+    unit: Attribute.Enumeration<['kg', 'g', 'stk', 'ml']>;
     foto: Attribute.Media;
     branch_ingredients: Attribute.Relation<
       'api::ingredient.ingredient',

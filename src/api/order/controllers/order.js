@@ -140,21 +140,66 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     try {
       const activeStatuses = ["new", "cooking"];
 
-      const { branchId } = ctx.query;
-      if (!branchId) {
+      const { branchId, userId } = ctx.query;
+
+      if (!userId) {
+        return ctx.badRequest("userId is required");
+      }
+
+      const user = await strapi.entityService.findOne(
+        "plugin::users-permissions.user",
+        userId,
+        {
+          populate: ["branch"],
+        }
+      );
+
+      if (!user) {
+        return ctx.badRequest("User not found");
+      }
+
+      let activeBranchId = branchId;
+
+      if (user.roles !== "admin") {
+        activeBranchId = user.branch?.id;
+      }
+
+      if (!activeBranchId) {
         return ctx.badRequest("branchId is required");
       }
+
+      const getImageUrl = (file) => {
+        if (!file) return null;
+
+        const image = file.formats?.thumbnail || file.formats?.small || file;
+
+        if (!image?.url) return null;
+
+        if (image.url.startsWith("http")) {
+          return image.url;
+        }
+
+        return `${strapi.config.server.url}${image.url}`;
+      };
 
       const orders = await strapi.entityService.findMany("api::order.order", {
         filters: {
           status: {
             $in: activeStatuses,
           },
-          branch: branchId,
+          branch: activeBranchId,
+        },
+        sort: {
+          createdAt: "asc",
         },
         populate: {
+          customer: true,
           order_items: {
-            populate: ["dish"],
+            populate: {
+              dish: {
+                populate: ["foto"],
+              },
+            },
           },
         },
       });
@@ -169,17 +214,23 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           if (!dish) continue;
 
           const dishId = dish.id;
+          const quantity = Number(item.quantity || 0);
+          const cookingTime = Number(dish.cookingTime || 0);
 
           if (!groupedDishesMap[dishId]) {
             groupedDishesMap[dishId] = {
               dishId,
               name: dish.name,
+              imageUrl: getImageUrl(dish.foto),
+              cookingTime,
               quantity: 0,
+              totalCookingTime: 0,
               orderIds: new Set(),
             };
           }
 
-          groupedDishesMap[dishId].quantity += Number(item.quantity || 0);
+          groupedDishesMap[dishId].quantity += quantity;
+          groupedDishesMap[dishId].totalCookingTime += cookingTime * quantity;
           groupedDishesMap[dishId].orderIds.add(order.id);
         }
       }
@@ -187,7 +238,10 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       const groupedDishes = Object.values(groupedDishesMap).map((dish) => ({
         dishId: dish.dishId,
         name: dish.name,
+        imageUrl: dish.imageUrl,
+        cookingTime: dish.cookingTime,
         quantity: dish.quantity,
+        totalCookingTime: dish.totalCookingTime,
         ordersCount: dish.orderIds.size,
       }));
 
@@ -200,7 +254,11 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
             filters: {
               dish: dish.dishId,
             },
-            populate: ["ingredient"],
+            populate: {
+              ingredient: {
+                populate: ["foto"],
+              },
+            },
           }
         );
 
@@ -217,7 +275,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
               "api::branch-ingredient.branch-ingredient",
               {
                 filters: {
-                  branch: branchId,
+                  branch: activeBranchId,
                   ingredient: ingredient.id,
                 },
                 limit: 1,
@@ -230,6 +288,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
               ingredientId,
               name: ingredient.name,
               unit: ingredient.unit,
+              imageUrl: getImageUrl(ingredient.foto),
               needed: 0,
               stock: Number(branchIngredient?.stock || 0),
               minStock: Number(branchIngredient?.minStock || 0),
@@ -258,14 +317,62 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         return {
           ...item,
           needed: Number(item.needed.toFixed(3)),
+          stock: Number(item.stock.toFixed(3)),
+          minStock: Number(item.minStock.toFixed(3)),
           percent,
           status,
         };
       });
 
+      const kitchenOrders = orders.map((order) => {
+        const items = order.order_items || [];
+
+        const totalCookingTime = items.reduce((sum, item) => {
+          const quantity = Number(item.quantity || 0);
+          const cookingTime = Number(item.dish?.cookingTime || 0);
+
+          return sum + cookingTime * quantity;
+        }, 0);
+
+        return {
+          id: order.id,
+          status: order.status,
+          type: order.type,
+          address: order.address,
+          paymentType: order.paymentType,
+          comment: order.comment,
+          totalPrice: Number(order.totalPrice || 0),
+          createdAt: order.createdAt,
+          customer: order.customer
+            ? {
+                id: order.customer.id,
+                name: order.customer.name,
+                phone: order.customer.phone,
+              }
+            : null,
+          totalCookingTime,
+          items: items.map((item) => ({
+            id: item.id,
+            quantity: Number(item.quantity || 0),
+            price: Number(item.price || 0),
+            status: item.status,
+            dish: item.dish
+              ? {
+                  id: item.dish.id,
+                  name: item.dish.name,
+                  imageUrl: getImageUrl(item.dish.foto),
+                  cookingTime: Number(item.dish.cookingTime || 0),
+                }
+              : null,
+          })),
+        };
+      });
+
       return {
+        branchId: activeBranchId,
         groupedDishes,
         ingredients,
+        orders: kitchenOrders,
       };
     } catch (error) {
       console.error(error);
