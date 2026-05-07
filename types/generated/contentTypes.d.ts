@@ -921,6 +921,8 @@ export interface ApiOrderOrder extends Schema.CollectionType {
       'manyToOne',
       'api::branch.branch'
     >;
+    startedCookingAt: Attribute.DateTime;
+    readyAt: Attribute.DateTime;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<

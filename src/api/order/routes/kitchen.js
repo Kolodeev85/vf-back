@@ -8,5 +8,37 @@ module.exports = {
         auth: false,
       },
     },
+    {
+      method: "PUT",
+      path: "/kitchen/orders/:id/start-cooking",
+      handler: "order.startCooking",
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: "PUT",
+      path: "/kitchen/orders/:orderId/items/:itemId/ready",
+      handler: "order.markItemReady",
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: "PUT",
+      path: "/kitchen/orders/:id/ready",
+      handler: "order.orderReady",
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: "GET",
+      path: "/kitchen/orders",
+      handler: "order.kitchenOrders",
+      config: {
+        auth: false,
+      },
+    },
   ],
 };

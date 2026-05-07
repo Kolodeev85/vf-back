@@ -63,6 +63,12 @@
       "relation": "manyToOne",
       "target": "api::branch.branch",
       "inversedBy": "orders"
-    }
+    },
+    "startedCookingAt": {
+  "type": "datetime"
+},
+"readyAt": {
+  "type": "datetime"
+}
   }
 }

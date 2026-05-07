@@ -136,6 +136,302 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       return ctx.internalServerError("Error creating order");
     }
   },
+  async startCooking(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      if (!id) {
+        return ctx.badRequest("order id is required");
+      }
+
+      const order = await strapi.entityService.findOne("api::order.order", id, {
+        populate: {
+          order_items: true,
+        },
+      });
+
+      if (!order) {
+        return ctx.notFound("Order not found");
+      }
+
+      if (order.status !== "new") {
+        return ctx.badRequest("Only new orders can be started");
+      }
+
+      const now = new Date();
+
+      await strapi.entityService.update("api::order.order", id, {
+        data: {
+          status: "cooking",
+          startedCookingAt: now,
+        },
+      });
+
+      const items = order.order_items || [];
+
+      for (const item of items) {
+        await strapi.entityService.update(
+          "api::order-item.order-item",
+          item.id,
+          {
+            data: {
+              status: "cooking",
+            },
+          }
+        );
+      }
+
+      const updatedOrder = await strapi.entityService.findOne(
+        "api::order.order",
+        id,
+        {
+          populate: {
+            customer: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      return {
+        success: true,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error starting cooking");
+    }
+  },
+  async markItemReady(ctx) {
+    try {
+      const { orderId, itemId } = ctx.params;
+
+      if (!orderId) {
+        return ctx.badRequest("orderId is required");
+      }
+
+      if (!itemId) {
+        return ctx.badRequest("itemId is required");
+      }
+
+      const order = await strapi.entityService.findOne(
+        "api::order.order",
+        orderId,
+        {
+          populate: {
+            order_items: true,
+          },
+        }
+      );
+
+      if (!order) {
+        return ctx.notFound("Order not found");
+      }
+
+      if (order.status !== "cooking") {
+        return ctx.badRequest("Only cooking orders can be updated");
+      }
+
+      const items = order.order_items || [];
+
+      const currentItem = items.find(
+        (item) => Number(item.id) === Number(itemId)
+      );
+
+      if (!currentItem) {
+        return ctx.badRequest("Order item not found in this order");
+      }
+
+      if (currentItem.status === "ready") {
+        return {
+          success: true,
+          message: "Item already ready",
+        };
+      }
+
+      await strapi.entityService.update("api::order-item.order-item", itemId, {
+        data: {
+          status: "ready",
+        },
+      });
+
+      const updatedItems = await strapi.entityService.findMany(
+        "api::order-item.order-item",
+        {
+          filters: {
+            order: orderId,
+          },
+        }
+      );
+
+      const allItemsReady =
+        updatedItems.length > 0 &&
+        updatedItems.every((item) => item.status === "ready");
+
+      const updatedOrder = await strapi.entityService.findOne(
+        "api::order.order",
+        orderId,
+        {
+          populate: {
+            customer: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      return {
+        success: true,
+        allItemsReady,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error marking item ready");
+    }
+  },
+  async orderReady(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      if (!id) {
+        return ctx.badRequest("order id is required");
+      }
+
+      const order = await strapi.entityService.findOne("api::order.order", id, {
+        populate: {
+          order_items: true,
+        },
+      });
+
+      if (!order) {
+        return ctx.notFound("Order not found");
+      }
+
+      if (order.status !== "cooking") {
+        return ctx.badRequest("Only cooking orders can be marked as ready");
+      }
+
+      const items = order.order_items || [];
+
+      const allItemsReady =
+        items.length > 0 && items.every((item) => item.status === "ready");
+
+      if (!allItemsReady) {
+        return ctx.badRequest("All order items must be ready first");
+      }
+
+      const updatedOrder = await strapi.entityService.update(
+        "api::order.order",
+        id,
+        {
+          data: {
+            status: "ready",
+            readyAt: new Date(),
+          },
+          populate: {
+            customer: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      return {
+        success: true,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error marking order ready");
+    }
+  },
+  async kitchenOrders(ctx) {
+    try {
+      const { branchId } = ctx.query;
+
+      if (!branchId) {
+        return ctx.badRequest("branchId is required");
+      }
+
+      const orders = await strapi.entityService.findMany("api::order.order", {
+        filters: {
+          branch: branchId,
+        },
+
+        sort: {
+          createdAt: "desc",
+        },
+
+        populate: {
+          customer: true,
+
+          order_items: {
+            populate: ["dish"],
+          },
+        },
+      });
+
+      const normalizedOrders = orders.map((order) => {
+        const items = order.order_items || [];
+
+        const totalCookingTime = items.reduce((acc, item) => {
+          const cookingTime = Number(item?.dish?.cookingTime || 0);
+          const quantity = Number(item?.quantity || 0);
+
+          return acc + cookingTime * quantity;
+        }, 0);
+
+        return {
+          id: order.id,
+          status: order.status,
+          type: order.type,
+          address: order.address,
+          paymentType: order.paymentType,
+          comment: order.comment,
+          totalPrice: Number(order.totalPrice || 0),
+
+          createdAt: order.createdAt,
+          startedCookingAt: order.startedCookingAt,
+          readyAt: order.readyAt,
+
+          totalCookingTime,
+
+          customer: order.customer
+            ? {
+                id: order.customer.id,
+                name: order.customer.name,
+                phone: order.customer.phone,
+              }
+            : null,
+
+          items: items.map((item) => ({
+            id: item.id,
+            quantity: Number(item.quantity || 0),
+            price: Number(item.price || 0),
+            status: item.status,
+
+            dish: item.dish
+              ? {
+                  id: item.dish.id,
+                  name: item.dish.name,
+                  cookingTime: Number(item.dish.cookingTime || 0),
+                }
+              : null,
+          })),
+        };
+      });
+
+      return normalizedOrders;
+    } catch (error) {
+      console.error(error);
+
+      return ctx.internalServerError("Error getting kitchen orders");
+    }
+  },
   async ingredientsSummary(ctx) {
     try {
       const activeStatuses = ["new", "cooking"];
@@ -205,17 +501,33 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       });
 
       const groupedDishesMap = {};
+      const dishesQueue = [];
 
       for (const order of orders) {
         const items = order.order_items || [];
+        const queueItems = [];
 
         for (const item of items) {
+          // готовые позиции больше не нужны для кухни
+          if (item.status === "ready") continue;
+
           const dish = item.dish;
           if (!dish) continue;
 
           const dishId = dish.id;
           const quantity = Number(item.quantity || 0);
           const cookingTime = Number(dish.cookingTime || 0);
+
+          queueItems.push({
+            orderItemId: item.id,
+            dishId,
+            name: dish.name,
+            imageUrl: getImageUrl(dish.foto),
+            quantity,
+            cookingTime,
+            totalCookingTime: cookingTime * quantity,
+            status: item.status,
+          });
 
           if (!groupedDishesMap[dishId]) {
             groupedDishesMap[dishId] = {
@@ -232,6 +544,22 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           groupedDishesMap[dishId].quantity += quantity;
           groupedDishesMap[dishId].totalCookingTime += cookingTime * quantity;
           groupedDishesMap[dishId].orderIds.add(order.id);
+        }
+
+        if (queueItems.length > 0) {
+          dishesQueue.push({
+            orderId: order.id,
+            orderStatus: order.status,
+            createdAt: order.createdAt,
+            customer: order.customer
+              ? {
+                  id: order.customer.id,
+                  name: order.customer.name,
+                  phone: order.customer.phone,
+                }
+              : null,
+            items: queueItems,
+          });
         }
       }
 
@@ -267,6 +595,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           if (!ingredient) continue;
 
           const ingredientId = ingredient.id;
+
           const needed =
             Number(recipe.quantity || 0) * Number(dish.quantity || 0);
 
@@ -343,6 +672,8 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           comment: order.comment,
           totalPrice: Number(order.totalPrice || 0),
           createdAt: order.createdAt,
+          startedCookingAt: order.startedCookingAt,
+          readyAt: order.readyAt,
           customer: order.customer
             ? {
                 id: order.customer.id,
@@ -371,6 +702,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       return {
         branchId: activeBranchId,
         groupedDishes,
+        dishesQueue,
         ingredients,
         orders: kitchenOrders,
       };
