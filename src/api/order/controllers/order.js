@@ -547,10 +547,52 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         }
 
         if (queueItems.length > 0) {
+          const now = new Date();
+
+          const totalCookingTime = queueItems.reduce((sum, item) => {
+            return sum + Number(item.totalCookingTime || 0);
+          }, 0);
+
+          const startedCookingAt = order.startedCookingAt
+            ? new Date(order.startedCookingAt)
+            : null;
+
+          const cookingPassed = startedCookingAt
+            ? Math.floor((now - startedCookingAt) / 1000 / 60)
+            : 0;
+
+          const remainingTime = startedCookingAt
+            ? totalCookingTime - cookingPassed
+            : totalCookingTime;
+
+          const lateMinutes = remainingTime < 0 ? Math.abs(remainingTime) : 0;
+
+          const isLate = Boolean(startedCookingAt && remainingTime < 0);
+
+          const isSoonLate = Boolean(
+            startedCookingAt && remainingTime >= 0 && remainingTime <= 5
+          );
+
+          let priority = 3;
+
+          if (isLate) {
+            priority = 1;
+          } else if (isSoonLate) {
+            priority = 2;
+          }
+
           dishesQueue.push({
             orderId: order.id,
             orderStatus: order.status,
             createdAt: order.createdAt,
+            startedCookingAt: order.startedCookingAt,
+            totalCookingTime,
+            cookingPassed,
+            remainingTime: remainingTime > 0 ? remainingTime : 0,
+            lateMinutes,
+            isLate,
+            isSoonLate,
+            priority,
             customer: order.customer
               ? {
                   id: order.customer.id,
@@ -698,6 +740,21 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           })),
         };
       });
+      dishesQueue.sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+
+        if (a.isLate && b.isLate) {
+          return b.lateMinutes - a.lateMinutes;
+        }
+
+        if (a.isSoonLate && b.isSoonLate) {
+          return a.remainingTime - b.remainingTime;
+        }
+
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      });
 
       return {
         branchId: activeBranchId,
@@ -709,6 +766,186 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     } catch (error) {
       console.error(error);
       return ctx.internalServerError("Error calculating ingredients summary");
+    }
+  },
+  async cancelOrder(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { reason } = ctx.request.body || {};
+
+      if (!id) {
+        return ctx.badRequest("order id is required");
+      }
+
+      const order = await strapi.entityService.findOne("api::order.order", id, {
+        populate: {
+          branch: true,
+        },
+      });
+
+      if (!order) {
+        return ctx.notFound("Order not found");
+      }
+
+      if (order.status === "done") {
+        return ctx.badRequest("Done order cannot be canceled");
+      }
+
+      if (order.status === "canceled") {
+        return ctx.badRequest("Order already canceled");
+      }
+
+      const user = ctx.state.user;
+      const userRole = user?.roles || user?.role || null;
+
+      const isAdmin = userRole === "admin";
+      const isManager = userRole === "manager";
+
+      if (order.status === "delivering" && !isAdmin && !isManager) {
+        return ctx.forbidden(
+          "Only manager or admin can cancel delivering order"
+        );
+      }
+
+      const branchId = order.branch?.id || order.branch;
+
+      const orderItems = await strapi.entityService.findMany(
+        "api::order-item.order-item",
+        {
+          filters: {
+            order: id,
+          },
+          populate: {
+            dish: true,
+          },
+        }
+      );
+
+      let itemsForDeduct = [];
+
+      if (order.status === "new") {
+        itemsForDeduct = [];
+      }
+
+      if (order.status === "cooking") {
+        itemsForDeduct = orderItems.filter((item) => {
+          return item.status === "ready";
+        });
+      }
+
+      if (order.status === "ready" || order.status === "delivering") {
+        itemsForDeduct = orderItems;
+      }
+
+      const deductIngredientsForItems = async (items) => {
+        for (const item of items) {
+          const dish = item.dish;
+          const orderItemQuantity = Number(item.quantity || 0);
+
+          if (!dish || !dish.id || orderItemQuantity <= 0) {
+            continue;
+          }
+
+          const recipes = await strapi.entityService.findMany(
+            "api::recipe.recipe",
+            {
+              filters: {
+                dish: dish.id,
+              },
+              populate: {
+                ingredient: true,
+              },
+            }
+          );
+
+          for (const recipe of recipes) {
+            const ingredient = recipe.ingredient;
+
+            if (!ingredient) continue;
+
+            const neededQuantity =
+              Number(recipe.quantity || 0) * orderItemQuantity;
+
+            if (neededQuantity <= 0) continue;
+
+            const branchIngredients = await strapi.entityService.findMany(
+              "api::branch-ingredient.branch-ingredient",
+              {
+                filters: {
+                  branch: branchId,
+                  ingredient: ingredient.id,
+                },
+                limit: 1,
+              }
+            );
+
+            const branchIngredient = branchIngredients[0];
+
+            if (!branchIngredient) continue;
+
+            const currentStock = Number(branchIngredient.stock || 0);
+            const newStock = currentStock - neededQuantity;
+
+            await strapi.entityService.update(
+              "api::branch-ingredient.branch-ingredient",
+              branchIngredient.id,
+              {
+                data: {
+                  stock: newStock < 0 ? 0 : newStock,
+                },
+              }
+            );
+          }
+
+          await strapi.entityService.update(
+            "api::order-item.order-item",
+            item.id,
+            {
+              data: {
+                isProductionLoss: true,
+                productionLossAt: new Date(),
+                productionLossReason: reason || "Order canceled",
+              },
+            }
+          );
+        }
+      };
+
+      const hasProductionLoss = itemsForDeduct.length > 0;
+
+      if (hasProductionLoss) {
+        await deductIngredientsForItems(itemsForDeduct);
+      }
+
+      const updatedOrder = await strapi.entityService.update(
+        "api::order.order",
+        id,
+        {
+          data: {
+            status: "canceled",
+            canceledAt: new Date(),
+            cancelReason: reason || null,
+            hasProductionLoss,
+          },
+          populate: {
+            customer: true,
+            branch: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      return {
+        success: true,
+        hasProductionLoss,
+        deductedItemsCount: itemsForDeduct.length,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error canceling order");
     }
   },
 }));

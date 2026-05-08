@@ -40,5 +40,13 @@ module.exports = {
         auth: false,
       },
     },
+    {
+      method: "PUT",
+      path: "/kitchen/orders/:id/cancel",
+      handler: "order.cancelOrder",
+      config: {
+        auth: false,
+      },
+    },
   ],
 };

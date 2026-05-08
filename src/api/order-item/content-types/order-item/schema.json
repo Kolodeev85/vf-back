@@ -38,6 +38,17 @@
       "relation": "manyToOne",
       "target": "api::dish.dish",
       "inversedBy": "order_items"
-    }
-  }
+    },
+    "isProductionLoss": {
+  "type": "boolean",
+  "default": false
+},
+"productionLossAt": {
+  "type": "datetime"
+},
+"productionLossReason": {
+  "type": "text"
+}
+}
+   
 }

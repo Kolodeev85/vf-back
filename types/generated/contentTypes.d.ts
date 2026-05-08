@@ -966,6 +966,9 @@ export interface ApiOrderItemOrderItem extends Schema.CollectionType {
       'manyToOne',
       'api::dish.dish'
     >;
+    isProductionLoss: Attribute.Boolean & Attribute.DefaultTo<false>;
+    productionLossAt: Attribute.DateTime;
+    productionLossReason: Attribute.Text;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
