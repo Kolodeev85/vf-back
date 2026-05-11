@@ -56,5 +56,15 @@ module.exports = {
         auth: false,
       },
     },
+    {
+      method: "PUT",
+      path: "/orders/:id/send-to-delivery",
+      handler: "order.sendToDelivery",
+    },
+    {
+      method: "PUT",
+      path: "/orders/:id/complete",
+      handler: "order.completeOrder",
+    },
   ],
 };

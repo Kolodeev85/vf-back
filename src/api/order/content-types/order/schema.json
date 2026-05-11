@@ -72,6 +72,12 @@
 },
 "scheduledFor": {
   "type": "datetime"
+},
+"order_histories": {
+  "type": "relation",
+  "relation": "oneToMany",
+  "target": "api::order-history.order-history",
+  "mappedBy": "order"
 }
   }
 }

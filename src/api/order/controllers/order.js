@@ -6,8 +6,63 @@
  */
 
 const { createCoreController } = require("@strapi/strapi").factories;
+const createOrderHistory = require("../util/createOrderHistory");
 
 module.exports = createCoreController("api::order.order", ({ strapi }) => ({
+  async update(ctx) {
+    try {
+      const { id } = ctx.params;
+      const user = ctx.state.user;
+      const bodyData = ctx.request.body?.data || ctx.request.body || {};
+      const newStatus = bodyData.status;
+
+      const oldOrder = await strapi.entityService.findOne(
+        "api::order.order",
+        id
+      );
+
+      if (!oldOrder) {
+        return ctx.notFound("Order not found");
+      }
+
+      const oldStatus = oldOrder.status;
+
+      const updatedOrder = await strapi.entityService.update(
+        "api::order.order",
+        id,
+        {
+          data: bodyData,
+          populate: {
+            customer: true,
+            branch: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      if (newStatus && oldStatus !== newStatus) {
+        await strapi.entityService.create("api::order-history.order-history", {
+          data: {
+            order: id,
+            user: user?.id || null,
+            fromStatus: oldStatus,
+            toStatus: newStatus,
+            changedAt: new Date(),
+          },
+        });
+      }
+
+      return {
+        success: true,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error updating order");
+    }
+  },
   async createFullOrder(ctx) {
     try {
       const {
@@ -122,12 +177,28 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         });
       }
 
+      await createOrderHistory(strapi, {
+        order: order.id,
+        action: "created",
+        title: "Order created",
+        message: "Order was created",
+        newStatus: "new",
+        user: ctx.state.user?.id || null,
+        meta: {
+          branchId,
+          customerId: customerEntity.id,
+          totalPrice,
+          scheduledFor: scheduledFor || new Date(),
+        },
+      });
+
       // 8. возвращаем заказ
       const fullOrder = await strapi.entityService.findOne(
         "api::order.order",
         order.id,
         {
           populate: {
+            order_histories: true,
             customer: true,
             order_items: {
               populate: ["dish"],
@@ -202,6 +273,18 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           },
         }
       );
+      await createOrderHistory(strapi, {
+        order: id,
+        action: "started_cooking",
+        title: "Cooking started",
+        message: "Order cooking was started",
+        oldStatus: "new",
+        newStatus: "cooking",
+        user: ctx.state.user?.id || null,
+        meta: {
+          startedCookingAt: now,
+        },
+      });
 
       return {
         success: true,
@@ -262,6 +345,18 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       await strapi.entityService.update("api::order-item.order-item", itemId, {
         data: {
           status: "ready",
+        },
+      });
+      await createOrderHistory(strapi, {
+        order: orderId,
+        action: "item_ready",
+        title: "Item ready",
+        message: "Order item was marked as ready",
+        oldStatus: currentItem.status,
+        newStatus: "ready",
+        user: ctx.state.user?.id || null,
+        meta: {
+          itemId,
         },
       });
 
@@ -331,6 +426,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       if (!allItemsReady) {
         return ctx.badRequest("All order items must be ready first");
       }
+      const now = new Date();
 
       const updatedOrder = await strapi.entityService.update(
         "api::order.order",
@@ -338,7 +434,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         {
           data: {
             status: "ready",
-            readyAt: new Date(),
+            readyAt: now,
           },
           populate: {
             customer: true,
@@ -348,6 +444,18 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           },
         }
       );
+      await createOrderHistory(strapi, {
+        order: id,
+        action: "order_ready",
+        title: "Order ready",
+        message: "Order was marked as ready",
+        oldStatus: "cooking",
+        newStatus: "ready",
+        user: ctx.state.user?.id || null,
+        meta: {
+          readyAt: now,
+        },
+      });
 
       return {
         success: true,
@@ -972,6 +1080,33 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           },
         }
       );
+      await createOrderHistory(strapi, {
+        order: id,
+        action: "canceled",
+        title: "Order canceled",
+        message: reason || "Order was canceled",
+        oldStatus: order.status,
+        newStatus: "canceled",
+        user: ctx.state.user?.id || null,
+        meta: {
+          reason: reason || null,
+          hasProductionLoss,
+          deductedItemsCount: itemsForDeduct.length,
+        },
+      });
+      if (hasProductionLoss) {
+        await createOrderHistory(strapi, {
+          order: id,
+          action: "production_loss",
+          title: "Production loss",
+          message: "Kitchen production loss was created",
+          user: ctx.state.user?.id || null,
+          meta: {
+            reason: reason || "Order canceled",
+            deductedItemsCount: itemsForDeduct.length,
+          },
+        });
+      }
 
       return {
         success: true,
@@ -986,7 +1121,8 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   },
   async ordersPageList(ctx) {
     try {
-      const { branchId, date, status } = ctx.query;
+      const { branchId, date, dateFrom, dateTo, status, type, paymentType } =
+        ctx.query;
 
       if (!branchId) {
         return ctx.badRequest("branchId is required");
@@ -994,10 +1130,10 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
 
       const selectedDate = date ? new Date(date) : new Date();
 
-      const startOfDay = new Date(selectedDate);
+      const startOfDay = dateFrom ? new Date(dateFrom) : new Date(selectedDate);
       startOfDay.setHours(0, 0, 0, 0);
 
-      const endOfDay = new Date(selectedDate);
+      const endOfDay = dateTo ? new Date(dateTo) : new Date(selectedDate);
       endOfDay.setHours(23, 59, 59, 999);
 
       const filters = {
@@ -1015,6 +1151,14 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         filters.status = status;
       }
 
+      if (type && type !== "all") {
+        filters.type = type;
+      }
+
+      if (paymentType && paymentType !== "all") {
+        filters.paymentType = paymentType;
+      }
+
       const orders = await strapi.entityService.findMany("api::order.order", {
         filters,
         sort: {
@@ -1025,6 +1169,14 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           branch: true,
           order_items: {
             populate: ["dish"],
+          },
+          order_histories: {
+            sort: {
+              createdAt: "asc",
+            },
+            populate: {
+              user: true,
+            },
           },
         },
       });
@@ -1089,17 +1241,261 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
                 }
               : null,
           })),
+
+          histories: (order.order_histories || []).map((history) => ({
+            id: history.id,
+            action: history.action,
+            title: history.title,
+            message: history.message,
+            oldStatus: history.oldStatus,
+            newStatus: history.newStatus,
+            meta: history.meta,
+            createdAt: history.createdAt,
+            user: history.user
+              ? {
+                  id: history.user.id,
+                  username: history.user.username,
+                  name: history.user.name,
+                  fullName: history.user.fullName,
+                  email: history.user.email,
+                }
+              : null,
+          })),
         };
       });
 
       return {
-        date: selectedDate,
+        dateFrom: startOfDay,
+        dateTo: endOfDay,
         total: normalizedOrders.length,
         orders: normalizedOrders,
       };
     } catch (error) {
       console.error(error);
       return ctx.internalServerError("Error loading orders page list");
+    }
+  },
+  async sendToDelivery(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      if (!id) {
+        return ctx.badRequest("order id is required");
+      }
+
+      const order = await strapi.entityService.findOne("api::order.order", id);
+
+      if (!order) {
+        return ctx.notFound("Order not found");
+      }
+
+      if (order.status !== "ready") {
+        return ctx.badRequest("Only ready orders can be sent to delivery");
+      }
+
+      const updatedOrder = await strapi.entityService.update(
+        "api::order.order",
+        id,
+        {
+          data: {
+            status: "delivering",
+            deliveryStartedAt: new Date(),
+          },
+          populate: {
+            customer: true,
+            branch: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      await createOrderHistory(strapi, {
+        order: id,
+        action: "sent_to_delivery",
+        title: "Sent to delivery",
+        message: "Order was sent to delivery",
+        oldStatus: "ready",
+        newStatus: "delivering",
+        user: ctx.state.user?.id || null,
+        meta: {
+          deliveryStartedAt: new Date(),
+        },
+      });
+      const user = ctx.state.user;
+      const userRole = user?.roles || user?.role || null;
+
+      const isAdmin = userRole === "admin";
+      const isManager = userRole === "manager";
+
+      if (!isAdmin && !isManager) {
+        return ctx.forbidden(
+          "Only manager or admin can send order to delivery"
+        );
+      }
+
+      return {
+        success: true,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error sending order to delivery");
+    }
+  },
+  async completeOrder(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      if (!id) {
+        return ctx.badRequest("order id is required");
+      }
+
+      const order = await strapi.entityService.findOne("api::order.order", id, {
+        populate: {
+          branch: true,
+        },
+      });
+
+      if (!order) {
+        return ctx.notFound("Order not found");
+      }
+
+      if (order.status === "done") {
+        return ctx.badRequest("Order already completed");
+      }
+
+      if (order.status === "canceled") {
+        return ctx.badRequest("Canceled order cannot be completed");
+      }
+
+      if (order.status !== "ready" && order.status !== "delivering") {
+        return ctx.badRequest(
+          "Only ready or delivering orders can be completed"
+        );
+      }
+
+      const branchId = order.branch?.id || order.branch;
+
+      const orderItems = await strapi.entityService.findMany(
+        "api::order-item.order-item",
+        {
+          filters: {
+            order: id,
+          },
+          populate: {
+            dish: true,
+          },
+        }
+      );
+
+      const deductIngredientsForItems = async (items) => {
+        for (const item of items) {
+          const dish = item.dish;
+          const orderItemQuantity = Number(item.quantity || 0);
+
+          if (!dish || !dish.id || orderItemQuantity <= 0) {
+            continue;
+          }
+
+          const recipes = await strapi.entityService.findMany(
+            "api::recipe.recipe",
+            {
+              filters: {
+                dish: dish.id,
+              },
+              populate: {
+                ingredient: true,
+              },
+            }
+          );
+
+          for (const recipe of recipes) {
+            const ingredient = recipe.ingredient;
+
+            if (!ingredient) continue;
+
+            const neededQuantity =
+              Number(recipe.quantity || 0) * orderItemQuantity;
+
+            if (neededQuantity <= 0) continue;
+
+            const branchIngredients = await strapi.entityService.findMany(
+              "api::branch-ingredient.branch-ingredient",
+              {
+                filters: {
+                  branch: branchId,
+                  ingredient: ingredient.id,
+                },
+                limit: 1,
+              }
+            );
+
+            const branchIngredient = branchIngredients[0];
+
+            if (!branchIngredient) continue;
+
+            const currentStock = Number(branchIngredient.stock || 0);
+            const newStock = currentStock - neededQuantity;
+
+            await strapi.entityService.update(
+              "api::branch-ingredient.branch-ingredient",
+              branchIngredient.id,
+              {
+                data: {
+                  stock: newStock < 0 ? 0 : newStock,
+                },
+              }
+            );
+          }
+        }
+      };
+
+      await deductIngredientsForItems(orderItems || []);
+
+      const now = new Date();
+
+      const updatedOrder = await strapi.entityService.update(
+        "api::order.order",
+        id,
+        {
+          data: {
+            status: "done",
+            deliveredAt: now,
+          },
+          populate: {
+            customer: true,
+            branch: true,
+            order_items: {
+              populate: ["dish"],
+            },
+          },
+        }
+      );
+
+      await createOrderHistory(strapi, {
+        order: id,
+        action: "completed",
+        title: "Order completed",
+        message: "Order was completed",
+        oldStatus: order.status,
+        newStatus: "done",
+        user: ctx.state.user?.id || null,
+        meta: {
+          deliveredAt: now,
+          deductedItemsCount: orderItems.length,
+        },
+      });
+
+      return {
+        success: true,
+        deductedItemsCount: orderItems.length,
+        order: updatedOrder,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error completing order");
     }
   },
 }));

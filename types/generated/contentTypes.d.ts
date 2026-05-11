@@ -924,6 +924,11 @@ export interface ApiOrderOrder extends Schema.CollectionType {
     startedCookingAt: Attribute.DateTime;
     readyAt: Attribute.DateTime;
     scheduledFor: Attribute.DateTime;
+    order_histories: Attribute.Relation<
+      'api::order.order',
+      'oneToMany',
+      'api::order-history.order-history'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
@@ -934,6 +939,62 @@ export interface ApiOrderOrder extends Schema.CollectionType {
       Attribute.Private;
     updatedBy: Attribute.Relation<
       'api::order.order',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
+export interface ApiOrderHistoryOrderHistory extends Schema.CollectionType {
+  collectionName: 'order_histories';
+  info: {
+    singularName: 'order-history';
+    pluralName: 'order-histories';
+    displayName: 'Order History';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    order: Attribute.Relation<
+      'api::order-history.order-history',
+      'manyToOne',
+      'api::order.order'
+    >;
+    action: Attribute.Enumeration<
+      [
+        'created',
+        'started_cooking',
+        'item_ready',
+        'order_ready',
+        'canceled',
+        'production_loss',
+        'sent_to_delivery',
+        'completed'
+      ]
+    > &
+      Attribute.Required;
+    title: Attribute.String;
+    message: Attribute.Text;
+    oldStatus: Attribute.String;
+    newStatus: Attribute.String;
+    meta: Attribute.JSON;
+    user: Attribute.Relation<
+      'api::order-history.order-history',
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::order-history.order-history',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::order-history.order-history',
       'oneToOne',
       'admin::user'
     > &
@@ -1050,6 +1111,7 @@ declare module '@strapi/types' {
       'api::dish.dish': ApiDishDish;
       'api::ingredient.ingredient': ApiIngredientIngredient;
       'api::order.order': ApiOrderOrder;
+      'api::order-history.order-history': ApiOrderHistoryOrderHistory;
       'api::order-item.order-item': ApiOrderItemOrderItem;
       'api::recipe.recipe': ApiRecipeRecipe;
     }
