@@ -10,8 +10,16 @@ const { createCoreController } = require("@strapi/strapi").factories;
 module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   async createFullOrder(ctx) {
     try {
-      const { branchId, customer, type, address, paymentType, comment, items } =
-        ctx.request.body;
+      const {
+        branchId,
+        customer,
+        type,
+        address,
+        paymentType,
+        comment,
+        items,
+        scheduledFor,
+      } = ctx.request.body;
 
       // 1. проверка клиента
       if (!customer || !customer.phone) {
@@ -95,6 +103,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           address,
           paymentType,
           comment,
+          scheduledFor: scheduledFor || new Date(),
           customer: customerEntity.id,
           branch: branchId,
         },
@@ -351,24 +360,35 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   },
   async kitchenOrders(ctx) {
     try {
-      const { branchId } = ctx.query;
+      const { branchId, date } = ctx.query;
 
       if (!branchId) {
         return ctx.badRequest("branchId is required");
       }
 
+      const selectedDate = date ? new Date(date) : new Date();
+
+      const startOfDay = new Date(selectedDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(selectedDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
       const orders = await strapi.entityService.findMany("api::order.order", {
         filters: {
           branch: branchId,
+          scheduledFor: {
+            $gte: startOfDay,
+            $lte: endOfDay,
+          },
         },
 
         sort: {
-          createdAt: "desc",
+          scheduledFor: "asc",
         },
 
         populate: {
           customer: true,
-
           order_items: {
             populate: ["dish"],
           },
@@ -393,10 +413,13 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           paymentType: order.paymentType,
           comment: order.comment,
           totalPrice: Number(order.totalPrice || 0),
-
           createdAt: order.createdAt,
+          scheduledFor: order.scheduledFor,
           startedCookingAt: order.startedCookingAt,
           readyAt: order.readyAt,
+          canceledAt: order.canceledAt,
+          cancelReason: order.cancelReason,
+          hasProductionLoss: order.hasProductionLoss,
 
           totalCookingTime,
 
@@ -413,6 +436,9 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
             quantity: Number(item.quantity || 0),
             price: Number(item.price || 0),
             status: item.status,
+            isProductionLoss: item.isProductionLoss,
+            productionLossAt: item.productionLossAt,
+            productionLossReason: item.productionLossReason,
 
             dish: item.dish
               ? {
@@ -428,7 +454,6 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       return normalizedOrders;
     } catch (error) {
       console.error(error);
-
       return ctx.internalServerError("Error getting kitchen orders");
     }
   },
@@ -477,6 +502,13 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
 
         return `${strapi.config.server.url}${image.url}`;
       };
+      const now = new Date();
+
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
 
       const orders = await strapi.entityService.findMany("api::order.order", {
         filters: {
@@ -484,6 +516,10 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
             $in: activeStatuses,
           },
           branch: activeBranchId,
+          scheduledFor: {
+            $gte: startOfDay,
+            $lte: endOfDay,
+          },
         },
         sort: {
           createdAt: "asc",
@@ -946,6 +982,124 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     } catch (error) {
       console.error(error);
       return ctx.internalServerError("Error canceling order");
+    }
+  },
+  async ordersPageList(ctx) {
+    try {
+      const { branchId, date, status } = ctx.query;
+
+      if (!branchId) {
+        return ctx.badRequest("branchId is required");
+      }
+
+      const selectedDate = date ? new Date(date) : new Date();
+
+      const startOfDay = new Date(selectedDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(selectedDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const filters = {
+        scheduledFor: {
+          $gte: startOfDay,
+          $lte: endOfDay,
+        },
+      };
+
+      if (branchId !== "all") {
+        filters.branch = branchId;
+      }
+
+      if (status && status !== "all") {
+        filters.status = status;
+      }
+
+      const orders = await strapi.entityService.findMany("api::order.order", {
+        filters,
+        sort: {
+          scheduledFor: "asc",
+        },
+        populate: {
+          customer: true,
+          branch: true,
+          order_items: {
+            populate: ["dish"],
+          },
+        },
+      });
+
+      const normalizedOrders = orders.map((order) => {
+        const items = order.order_items || [];
+
+        const totalCookingTime = items.reduce((sum, item) => {
+          const quantity = Number(item.quantity || 0);
+          const cookingTime = Number(item.dish?.cookingTime || 0);
+
+          return sum + quantity * cookingTime;
+        }, 0);
+
+        return {
+          id: order.id,
+          status: order.status,
+          type: order.type,
+          address: order.address,
+          paymentType: order.paymentType,
+          comment: order.comment,
+          totalPrice: Number(order.totalPrice || 0),
+
+          createdAt: order.createdAt,
+          scheduledFor: order.scheduledFor,
+          startedCookingAt: order.startedCookingAt,
+          readyAt: order.readyAt,
+          canceledAt: order.canceledAt,
+          cancelReason: order.cancelReason,
+          hasProductionLoss: order.hasProductionLoss,
+
+          branch: order.branch
+            ? {
+                id: order.branch.id,
+                name: order.branch.name,
+              }
+            : null,
+
+          customer: order.customer
+            ? {
+                id: order.customer.id,
+                name: order.customer.name,
+                phone: order.customer.phone,
+              }
+            : null,
+
+          totalCookingTime,
+
+          items: items.map((item) => ({
+            id: item.id,
+            quantity: Number(item.quantity || 0),
+            price: Number(item.price || 0),
+            status: item.status,
+            isProductionLoss: item.isProductionLoss,
+            productionLossAt: item.productionLossAt,
+            productionLossReason: item.productionLossReason,
+            dish: item.dish
+              ? {
+                  id: item.dish.id,
+                  name: item.dish.name,
+                  cookingTime: Number(item.dish.cookingTime || 0),
+                }
+              : null,
+          })),
+        };
+      });
+
+      return {
+        date: selectedDate,
+        total: normalizedOrders.length,
+        orders: normalizedOrders,
+      };
+    } catch (error) {
+      console.error(error);
+      return ctx.internalServerError("Error loading orders page list");
     }
   },
 }));

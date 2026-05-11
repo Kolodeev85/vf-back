@@ -48,5 +48,13 @@ module.exports = {
         auth: false,
       },
     },
+    {
+      method: "GET",
+      path: "/orders-page/orders",
+      handler: "order.ordersPageList",
+      config: {
+        auth: false,
+      },
+    },
   ],
 };

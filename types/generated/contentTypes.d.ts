@@ -923,6 +923,7 @@ export interface ApiOrderOrder extends Schema.CollectionType {
     >;
     startedCookingAt: Attribute.DateTime;
     readyAt: Attribute.DateTime;
+    scheduledFor: Attribute.DateTime;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
