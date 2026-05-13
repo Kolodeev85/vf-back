@@ -48,6 +48,12 @@
       "relation": "oneToMany",
       "target": "api::recipe.recipe",
       "mappedBy": "dish"
+    },
+    "loss_records": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::loss-record.loss-record",
+      "mappedBy": "dish"
     }
   }
 }

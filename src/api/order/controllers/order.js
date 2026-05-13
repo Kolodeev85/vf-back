@@ -6,7 +6,9 @@
  */
 
 const { createCoreController } = require("@strapi/strapi").factories;
+
 const createOrderHistory = require("../util/createOrderHistory");
+const calculateDishCost = require("../util/calculateDishCost");
 
 module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   async update(ctx) {
@@ -940,16 +942,6 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       }
 
       const user = ctx.state.user;
-      const userRole = user?.roles || user?.role || null;
-
-      const isAdmin = userRole === "admin";
-      const isManager = userRole === "manager";
-
-      if (order.status === "delivering" && !isAdmin && !isManager) {
-        return ctx.forbidden(
-          "Only manager or admin can cancel delivering order"
-        );
-      }
 
       const branchId = order.branch?.id || order.branch;
 
@@ -1041,6 +1033,30 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
             );
           }
 
+          const dishCost = await calculateDishCost(strapi, dish.id, branchId);
+
+          const costPrice = Number(dishCost.costPrice || 0);
+
+          const lossAmount = Number((costPrice * orderItemQuantity).toFixed(2));
+
+          await strapi.entityService.create("api::loss-record.loss-record", {
+            data: {
+              order: id,
+              order_item: item.id,
+              branch: branchId,
+              dish: dish.id,
+              quantity: orderItemQuantity,
+              costPrice,
+              lossAmount,
+              status: "pending",
+              reason: reason || "Order canceled",
+              meta: {
+                orderStatus: order.status,
+                ingredients: dishCost.ingredients,
+              },
+            },
+          });
+
           await strapi.entityService.update(
             "api::order-item.order-item",
             item.id,
@@ -1061,13 +1077,15 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         await deductIngredientsForItems(itemsForDeduct);
       }
 
+      const now = new Date();
+
       const updatedOrder = await strapi.entityService.update(
         "api::order.order",
         id,
         {
           data: {
             status: "canceled",
-            canceledAt: new Date(),
+            canceledAt: now,
             cancelReason: reason || null,
             hasProductionLoss,
           },
@@ -1080,6 +1098,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
           },
         }
       );
+
       await createOrderHistory(strapi, {
         order: id,
         action: "canceled",
@@ -1087,20 +1106,21 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         message: reason || "Order was canceled",
         oldStatus: order.status,
         newStatus: "canceled",
-        user: ctx.state.user?.id || null,
+        user: user?.id || null,
         meta: {
           reason: reason || null,
           hasProductionLoss,
           deductedItemsCount: itemsForDeduct.length,
         },
       });
+
       if (hasProductionLoss) {
         await createOrderHistory(strapi, {
           order: id,
           action: "production_loss",
           title: "Production loss",
           message: "Kitchen production loss was created",
-          user: ctx.state.user?.id || null,
+          user: user?.id || null,
           meta: {
             reason: reason || "Order canceled",
             deductedItemsCount: itemsForDeduct.length,
@@ -1115,8 +1135,11 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         order: updatedOrder,
       };
     } catch (error) {
-      console.error(error);
-      return ctx.internalServerError("Error canceling order");
+      console.error("CANCEL ORDER FULL ERROR:", error);
+      console.error("CANCEL ORDER ERROR DETAILS:", error?.details);
+      console.error("CANCEL ORDER ERROR MESSAGE:", error?.message);
+
+      return ctx.internalServerError(error?.message || "Error canceling order");
     }
   },
   async ordersPageList(ctx) {

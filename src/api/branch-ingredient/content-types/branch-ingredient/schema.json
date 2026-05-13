@@ -28,6 +28,15 @@
       "relation": "manyToOne",
       "target": "api::ingredient.ingredient",
       "inversedBy": "branch_ingredients"
-    }
+    },
+    "purchasePrice": {
+  "type": "decimal",
+  "default": 0
+},
+"purchaseUnit": {
+  "type": "enumeration",
+  "enum": ["kg", "g", "pcs", "ml"],
+  "default": "kg"
+}
   }
 }

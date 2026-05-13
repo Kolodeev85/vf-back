@@ -65,19 +65,25 @@
       "inversedBy": "orders"
     },
     "startedCookingAt": {
-  "type": "datetime"
-},
-"readyAt": {
-  "type": "datetime"
-},
-"scheduledFor": {
-  "type": "datetime"
-},
-"order_histories": {
-  "type": "relation",
-  "relation": "oneToMany",
-  "target": "api::order-history.order-history",
-  "mappedBy": "order"
-}
+      "type": "datetime"
+    },
+    "readyAt": {
+      "type": "datetime"
+    },
+    "scheduledFor": {
+      "type": "datetime"
+    },
+    "order_histories": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order-history.order-history",
+      "mappedBy": "order"
+    },
+    "loss_records": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::loss-record.loss-record",
+      "mappedBy": "order"
+    }
   }
 }

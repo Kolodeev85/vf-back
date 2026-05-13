@@ -40,15 +40,20 @@
       "inversedBy": "order_items"
     },
     "isProductionLoss": {
-  "type": "boolean",
-  "default": false
-},
-"productionLossAt": {
-  "type": "datetime"
-},
-"productionLossReason": {
-  "type": "text"
-}
-}
-   
+      "type": "boolean",
+      "default": false
+    },
+    "productionLossAt": {
+      "type": "datetime"
+    },
+    "productionLossReason": {
+      "type": "text"
+    },
+    "loss_records": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::loss-record.loss-record",
+      "mappedBy": "order_item"
+    }
+  }
 }

@@ -713,6 +713,11 @@ export interface ApiBranchBranch extends Schema.CollectionType {
       'oneToMany',
       'api::branch-ingredient.branch-ingredient'
     >;
+    loss_records: Attribute.Relation<
+      'api::branch.branch',
+      'oneToMany',
+      'api::loss-record.loss-record'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     publishedAt: Attribute.DateTime;
@@ -755,6 +760,9 @@ export interface ApiBranchIngredientBranchIngredient
       'manyToOne',
       'api::ingredient.ingredient'
     >;
+    purchasePrice: Attribute.Decimal & Attribute.DefaultTo<0>;
+    purchaseUnit: Attribute.Enumeration<['kg', 'g', 'pcs', 'ml']> &
+      Attribute.DefaultTo<'kg'>;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     publishedAt: Attribute.DateTime;
@@ -838,6 +846,11 @@ export interface ApiDishDish extends Schema.CollectionType {
       'oneToMany',
       'api::recipe.recipe'
     >;
+    loss_records: Attribute.Relation<
+      'api::dish.dish',
+      'oneToMany',
+      'api::loss-record.loss-record'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     publishedAt: Attribute.DateTime;
@@ -879,6 +892,72 @@ export interface ApiIngredientIngredient extends Schema.CollectionType {
       Attribute.Private;
     updatedBy: Attribute.Relation<
       'api::ingredient.ingredient',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
+export interface ApiLossRecordLossRecord extends Schema.CollectionType {
+  collectionName: 'loss_records';
+  info: {
+    singularName: 'loss-record';
+    pluralName: 'loss-records';
+    displayName: 'Loss record';
+    description: '';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    order: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'manyToOne',
+      'api::order.order'
+    >;
+    order_item: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'manyToOne',
+      'api::order-item.order-item'
+    >;
+    branch: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'manyToOne',
+      'api::branch.branch'
+    >;
+    dish: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'manyToOne',
+      'api::dish.dish'
+    >;
+    quantity: Attribute.Integer & Attribute.DefaultTo<1>;
+    costPrice: Attribute.Decimal & Attribute.DefaultTo<0>;
+    lossAmount: Attribute.Decimal & Attribute.DefaultTo<0>;
+    status: Attribute.Enumeration<
+      ['pending', 'trashed', 'staff_taken', 'bonus_given', 'reworked', 'other']
+    > &
+      Attribute.Required &
+      Attribute.DefaultTo<'pending'>;
+    reason: Attribute.Text;
+    comment: Attribute.Text;
+    resolvedAt: Attribute.DateTime;
+    user: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    meta: Attribute.JSON;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::loss-record.loss-record',
       'oneToOne',
       'admin::user'
     > &
@@ -928,6 +1007,11 @@ export interface ApiOrderOrder extends Schema.CollectionType {
       'api::order.order',
       'oneToMany',
       'api::order-history.order-history'
+    >;
+    loss_records: Attribute.Relation<
+      'api::order.order',
+      'oneToMany',
+      'api::loss-record.loss-record'
     >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
@@ -1031,6 +1115,11 @@ export interface ApiOrderItemOrderItem extends Schema.CollectionType {
     isProductionLoss: Attribute.Boolean & Attribute.DefaultTo<false>;
     productionLossAt: Attribute.DateTime;
     productionLossReason: Attribute.Text;
+    loss_records: Attribute.Relation<
+      'api::order-item.order-item',
+      'oneToMany',
+      'api::loss-record.loss-record'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
@@ -1110,6 +1199,7 @@ declare module '@strapi/types' {
       'api::customer.customer': ApiCustomerCustomer;
       'api::dish.dish': ApiDishDish;
       'api::ingredient.ingredient': ApiIngredientIngredient;
+      'api::loss-record.loss-record': ApiLossRecordLossRecord;
       'api::order.order': ApiOrderOrder;
       'api::order-history.order-history': ApiOrderHistoryOrderHistory;
       'api::order-item.order-item': ApiOrderItemOrderItem;

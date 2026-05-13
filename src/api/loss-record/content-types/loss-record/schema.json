@@ -1,0 +1,82 @@
+{
+  "kind": "collectionType",
+  "collectionName": "loss_records",
+  "info": {
+    "singularName": "loss-record",
+    "pluralName": "loss-records",
+    "displayName": "Loss record",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "order": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::order.order",
+      "inversedBy": "loss_records"
+    },
+    "order_item": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::order-item.order-item",
+      "inversedBy": "loss_records"
+    },
+    "branch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::branch.branch",
+      "inversedBy": "loss_records"
+    },
+    "dish": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::dish.dish",
+      "inversedBy": "loss_records"
+    },
+    "quantity": {
+      "type": "integer",
+      "default": 1
+    },
+    "costPrice": {
+      "type": "decimal",
+      "default": 0
+    },
+    "lossAmount": {
+      "type": "decimal",
+      "default": 0
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "pending",
+        "trashed",
+        "staff_taken",
+        "bonus_given",
+        "reworked",
+        "other"
+      ],
+      "default": "pending",
+      "required": true
+    },
+    "reason": {
+      "type": "text"
+    },
+    "comment": {
+      "type": "text"
+    },
+    "resolvedAt": {
+      "type": "datetime"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "meta": {
+      "type": "json"
+    }
+  }
+}

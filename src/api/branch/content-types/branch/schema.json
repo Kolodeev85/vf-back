@@ -43,6 +43,12 @@
       "relation": "oneToMany",
       "target": "api::branch-ingredient.branch-ingredient",
       "mappedBy": "branch"
+    },
+    "loss_records": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::loss-record.loss-record",
+      "mappedBy": "branch"
     }
   }
 }
