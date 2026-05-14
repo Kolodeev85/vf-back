@@ -75,6 +75,11 @@
       "relation": "manyToOne",
       "target": "plugin::users-permissions.user"
     },
+    "resolvedBy": {
+  "type": "relation",
+  "relation": "manyToOne",
+  "target": "plugin::users-permissions.user"
+},
     "meta": {
       "type": "json"
     }

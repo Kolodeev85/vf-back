@@ -947,6 +947,11 @@ export interface ApiLossRecordLossRecord extends Schema.CollectionType {
       'manyToOne',
       'plugin::users-permissions.user'
     >;
+    resolvedBy: Attribute.Relation<
+      'api::loss-record.loss-record',
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
     meta: Attribute.JSON;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
